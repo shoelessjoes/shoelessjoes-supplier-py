@@ -1,0 +1,7 @@
+playwright>=1.50.0
+PyYAML>=6.0.1
+python-dotenv>=1.0.1
+rapidfuzz>=3.9.7
+pandas>=2.2.2
+typer>=0.12.3
+requests>=2.32.3

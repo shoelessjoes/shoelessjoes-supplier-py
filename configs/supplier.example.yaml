@@ -1,0 +1,85 @@
+supplier:
+  name: "Example Supplier"
+
+login:
+  url: "https://supplier.example.com/login.php"
+  username_env: "SUPPLIER_USERNAME"
+  password_env: "SUPPLIER_PASSWORD"
+  username_selector: "input[name='username']"
+  password_selector: "input[name='password']"
+  submit_selector: "button[type='submit']"
+  # Either a URL fragment or a selector that only exists when logged in
+  success_url_contains: "/account"
+  success_selector: null
+
+table_page:
+  # This can be a .php page that renders a filtered table.
+  url: "https://supplier.example.com/prices.php"
+
+  # Optional: actions to apply filters before table appears.
+  # Supported actions:
+  # - click: { selector: "..." }
+  # - fill: { selector: "...", value: "..." }
+  # - select: { selector: "...", value: "...", wait_navigation: true }  # optional: if change triggers form submit
+  # - wait_for_selector: { selector: "...", timeout_ms: 30000 }
+  # - wait_ms: { ms: 500 }
+  filter_actions: []
+
+  # Table detection + parsing
+  table_selector: "table#results"
+  header_row_selector: "thead tr"
+  body_row_selector: "tbody tr"
+  cell_selector: "td"
+
+upc_lookup:
+  # If enabled, the scraper can use the site-wide search box to lookup specific UPCs
+  # (useful when filters are complex or the table is product-specific).
+  enabled: false
+  # Optional path to a CSV containing a column named "upc"
+  upc_csv_path: null
+  # Optional: iterate these category IDs and parse each category table.
+  # Useful for broad sweeps where one category config is too narrow.
+  category_sweep_ids: []
+
+  # Selectors for the site-wide search
+  search_input_selector: null
+  search_submit_selector: null
+  # Selector to click the first result (or the exact product link) after searching
+  search_results_first_link_selector: null
+  # Optional selector on the product page that navigates back to the price table/history page
+  navigate_back_to_table_selector: null
+
+price_alerts:
+  # Optional automation for adding price alerts after matching.
+  url: null
+  type_selector: null
+  price_selector: null
+  add_selector: null
+  # Optional selector for an on-page success/error message after clicking "Add"
+  feedback_selector: null
+
+mapping:
+  # Tell the scraper how to map table columns → normalized fields.
+  # You can map by header text (recommended), or by zero-based column index.
+  #
+  # Example by header:
+  #   upc: { header: "UPC" }
+  #   title: { header: "Description" }
+  #   supplier_high_buy: { header: "Current High Buy" }
+  #   supplier_low_sell: { header: "Current Low Sell" }
+  #   supplier_price: { header: "Current Low Sell" }  # legacy/primary baseline
+  #
+  # Example by index:
+  #   upc: { index: 2 }
+  upc: { header: "UPC" }
+  title: { header: "Description" }
+  supplier_price: { header: "Price" }
+  # Optional additional market columns:
+  # supplier_high_buy: { header: "Current High Buy" }
+  # supplier_low_sell: { header: "Current Low Sell" }
+
+politeness:
+  slow_mo_ms: 150
+  step_delay_ms: 250
+  navigation_timeout_ms: 60000
+  selector_timeout_ms: 30000

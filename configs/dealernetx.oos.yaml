@@ -1,0 +1,82 @@
+supplier:
+  name: "DealernetX"
+
+login:
+  url: "https://www.dealernetx.com/login.php"
+  username_env: "SUPPLIER_USERNAME"
+  password_env: "SUPPLIER_PASSWORD"
+  username_selector: "main #userName, main input[name='userName']"
+  password_selector: "main #userPass, main input[name='userPass']"
+  submit_selector: "main button[name='loginBtn']"
+  success_url_contains_any:
+    - "/home.php"
+    - "/siteannouncements.php"
+  success_selector: null
+
+table_page:
+  url: "https://www.dealernetx.com/priceguide.php"
+  filter_actions:
+    - fill_relative_date: { selector: "input[name='fromdate'], #fromdate", days_ago: 45, format: "%m/%d/%Y" }
+  table_selector: "table:has(caption)"
+  header_row_selector: "thead tr"
+  body_row_selector: "tbody tr"
+  cell_selector: "td"
+  title_append_variation: true
+  table_selector_after_product_link: null
+
+upc_lookup:
+  enabled: true
+  # Out-of-stock profile: active catalog UPCs with zero on-hand quantity.
+  upc_csv_path: "data/upcs_out_of_stock.csv"
+  category_sweep_ids:
+    - "21"
+    - "23"
+    - "1501"
+    - "1381"
+    - "141"
+    - "25"
+    - "241"
+    - "27"
+    - "1461"
+    - "1604"
+    - "221"
+    - "1521"
+    - "29"
+    - "621"
+    - "521"
+    - "1605"
+    - "1541"
+    - "1606"
+    - "1561"
+    - "1602"
+    - "41"
+    - "1610"
+    - "1608"
+    - "1609"
+  search_input_selector: "#keywordsearch"
+  search_submit_selector: "i.fa-search"
+  search_wait_url_contains: "search.php"
+  search_results_first_link_selector: "table tbody tr td:nth-child(2) a"
+  navigate_back_to_table_selector: null
+
+price_alerts:
+  url: "https://www.dealernetx.com/priceAlert.php"
+  type_selector: "select[name='type'], select#type"
+  price_selector: "input[name='price'], input#price"
+  add_selector: "input[type='submit'], button[type='submit']"
+  feedback_selector: null
+
+mapping:
+  upc: { header: "UPC" }
+  title: { header: "Product" }
+  variation: { header: "Variation" }
+  supplier_high_buy: { header: "Current High Buy" }
+  supplier_low_sell: { header: "Current Low Sell" }
+  supplier_price: { header: "Current Low Sell" }
+
+politeness:
+  slow_mo_ms: 150
+  step_delay_ms: 300
+  navigation_timeout_ms: 60000
+  selector_timeout_ms: 30000
+

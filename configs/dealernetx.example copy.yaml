@@ -1,0 +1,68 @@
+supplier:
+  name: "DealernetX"
+
+login:
+  url: "https://www.dealernetx.com/home.php"
+  username_env: "SUPPLIER_USERNAME"
+  password_env: "SUPPLIER_PASSWORD"
+
+  # Username field from DealernetX: <input name="userName" id="userName" ...>
+  username_selector: "#userName"
+  # Password field: name="userPass" id="id_password"
+  password_selector: "#id_password"
+  # Login submit: type="submit" name="loginBtn" value="Go"
+  submit_selector: "input[name='loginBtn']"
+
+  # After login, DealernetX typically stays on /home.php.
+  success_url_contains: "/home.php"
+  success_selector: null
+
+table_page:
+  url: "https://www.dealernetx.com/priceguide.php"
+
+  # If the table requires selecting categories/filters, add steps here.
+  # Example:
+  # filter_actions:
+  #   - select: { selector: "select#category", value: "Shoes" }
+  #   - wait_ms: { ms: 500 }
+  #   - click: { selector: "button#applyFilters" }
+  filter_actions: []
+
+  # You will likely need to adjust the table selector once you inspect the page.
+  table_selector: "table"
+  header_row_selector: "thead tr"
+  body_row_selector: "tbody tr"
+  cell_selector: "td"
+
+upc_lookup:
+  enabled: true
+  # Put your UPC list in a CSV (header "upc"), and point here.
+  upc_csv_path: "data/upcs.csv"
+
+  # Product search: id="keywordsearch"
+  search_input_selector: "#keywordsearch"
+  search_submit_selector: "i.fa-search"
+  # First result link after search
+  search_results_first_link_selector: "a[href*='product'], a[href*='priceguide'], table a"
+  # If a product page has a button that returns to the table/history view, set it here
+  navigate_back_to_table_selector: null
+
+price_alerts:
+  url: "https://www.dealernetx.com/priceAlert.php"
+  type_selector: "select[name='type'], select#type"
+  price_selector: "input[name='price'], input#price"
+  add_selector: "input[type='submit'], button[type='submit']"
+  feedback_selector: null
+
+mapping:
+  # Update these headers once you see the table columns.
+  upc: { header: "UPC" }
+  title: { header: "Product" }
+  supplier_price: { header: "Price" }
+
+politeness:
+  slow_mo_ms: 150
+  step_delay_ms: 300
+  navigation_timeout_ms: 60000
+  selector_timeout_ms: 30000
+

@@ -1,0 +1,111 @@
+supplier:
+  name: "DealernetX"
+
+login:
+  url: "https://www.dealernetx.com/login.php"
+  username_env: "SUPPLIER_USERNAME"
+  password_env: "SUPPLIER_PASSWORD"
+
+  # Revamp login selectors from DevTools.
+  username_selector: "main #userName, main input[name='userName']"
+  password_selector: "main #userPass, main input[name='userPass']"
+  submit_selector: "main button[name='loginBtn']"
+
+  # After login, DealernetX may send you to announcements first, not home.
+  success_url_contains_any:
+    - "/home.php"
+    - "/siteannouncements.php"
+  success_selector: null
+
+table_page:
+  # From home: <a href="/priceguide.php">Price Guide</a> → full URL is priceguide.php
+  url: "https://www.dealernetx.com/priceguide.php"
+
+  # Price guide revamp: category is swept across upc_lookup.category_sweep_ids.
+  # Keep filter actions to shared controls only (date range, waits, optional apply click).
+  # These run right after opening priceguide and BEFORE the UPC search (per UPC in data/upcs.csv).
+  #
+  # Category/year selections are handled by sweep mode below.
+  filter_actions:
+    # Shared date window across all swept categories.
+    - fill_relative_date: { selector: "input[name='fromdate'], #fromdate", days_ago: 45, format: "%m/%d/%Y" }
+
+  # Box-price grid: <caption>All prices are box prices</caption> — avoids grabbing the wrong <table> on busy pages.
+  # If a page has no caption on the target table, use plain "table" or a more specific selector.
+  table_selector: "table:has(caption)"
+  header_row_selector: "thead tr"
+  body_row_selector: "tbody tr"
+  cell_selector: "td"
+  # Append Variation when non-empty, e.g. "Topps Series 1 ~ Blaster v2 (International)" — helps fuzzy match vs Shopify.
+  title_append_variation: true
+  # If the product page uses a different table than priceguide, set this; otherwise leave null.
+  table_selector_after_product_link: null
+
+upc_lookup:
+  enabled: true
+  # Put your UPC list in a CSV (header "upc"), and point here.
+  upc_csv_path: "data/upcs_in_stock.csv"
+  # Sweep categories so we don't limit to only baseball.
+  category_sweep_ids:
+    - "21"    # Baseball
+    - "23"    # Basketball
+    - "1501"  # Basketball WNBA
+    - "1381"  # Combat Sports
+    - "1605"  # EFT Swap
+    - "141"   # Entertainment
+    - "25"    # Football
+    - "241"   # Golf
+    - "27"    # Hockey
+    - "1461"  # Lacrosse
+    - "1541"  # Magic The Gathering
+    - "41"    # more games
+    - "521"   # Multi Sports
+    - "1606"  # One Piece
+    - "1604"  # Other Sports
+    - "1561"  # POKEMON
+    - "1608"  # Pop Mart
+    - "1609"  # Precious Metals
+    - "1610"  # PSA GRADED CARDS
+    - "221"   # Racing
+    - "1521"  # Soccer (single year)
+    - "29"    # Soccer (split year)
+    - "621"   # Tennis
+    - "1602"  # YuGiOh!
+
+  # Product search: name="keywordsearch" id="keywordsearch"
+  search_input_selector: "#keywordsearch"
+  # Spyglass: <i class="fa fa-search" ...>
+  search_submit_selector: "i.fa-search"
+  # Search lands on https://www.dealernetx.com/search.php with a results table.
+  search_wait_url_contains: "search.php"
+  # Table columns: UPC | Listing | Variation | ... — link is in Listing (2nd column).
+  # If your rows have an extra leading cell (e.g. row number), use td:nth-child(3) a instead.
+  search_results_first_link_selector: "table tbody tr td:nth-child(2) a"
+  # If a product page has a button that returns to the table/history view, set it here
+  navigate_back_to_table_selector: null
+
+price_alerts:
+  url: "https://www.dealernetx.com/priceAlert.php"
+  type_selector: "select[name='type'], select#type"
+  price_selector: "input[name='price'], input#price"
+  add_selector: "input[type='submit'], button[type='submit']"
+  feedback_selector: null
+
+mapping:
+  # Match <th> text exactly — same grid as your pasted table (Product … Historical Low Sell).
+  # UPC cell may contain multiple codes separated by <br> — one CSV row per UPC (same title/price).
+  upc: { header: "UPC" }
+  title: { header: "Product" }
+  variation: { header: "Variation" }
+  # Keep both Dealernet signal columns for decisions.
+  supplier_high_buy: { header: "Current High Buy" }
+  supplier_low_sell: { header: "Current Low Sell" }
+  # supplier_price remains the primary baseline used by existing workflows.
+  supplier_price: { header: "Current Low Sell" }
+
+politeness:
+  slow_mo_ms: 150
+  step_delay_ms: 300
+  navigation_timeout_ms: 60000
+  selector_timeout_ms: 30000
+

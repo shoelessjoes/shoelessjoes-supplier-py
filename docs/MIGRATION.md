@@ -32,10 +32,12 @@ Key folders/files:
 
 - Storefront handoff: `../shoelessjoes-storefront/docs/HANDOFF.md`
 - Node ops target: `../shoelessjoes-ops/docs/MIGRATION.md`
+- Stack overview: `DEALERNET_STACK.md`
+- Zip archive `C:\Users\burke\Git\dealernet-shopify-ops.zip` matches live `dealernet-shopify-ops` @ `5f95a8d` (no extra files vs clone)
 
 ## Status
 
-- [ ] Copy `src/`, `configs/`, `scripts/`, `requirements.txt`, `.env.example`
-- [ ] Copy README content from legacy (full CLI docs)
+- [x] Copy `src/`, `configs/`, `scripts/`, `requirements.txt`, `.env.example`
+- [x] Copy README content from legacy (full CLI docs)
 - [ ] Verify `python -m src.main test-login` against DealernetX
 - [ ] Re-register Windows scheduled tasks pointing at this path
