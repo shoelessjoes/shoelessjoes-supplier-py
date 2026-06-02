@@ -1,7 +1,7 @@
 # Handoff to Claude Code — Supplier / Pricing Pipeline
 
-**Last updated:** 2026-05-28  
-**Master ops handoff:** `../../shoelessjoes-ops/docs/HANDOFF_CLAUDE.md`
+**Last updated:** 2026-05-29  
+**Master handoff (Dealernet + vendor email + receiving):** `../../shoelessjoes-ops/docs/AGENT_HANDOFF.md`
 
 ---
 
