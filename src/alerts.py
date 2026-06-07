@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlsplit, urlunsplit
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
@@ -15,8 +16,59 @@ class PriceAlertError(RuntimeError):
     pass
 
 
-def _set_alert_type(page, selector: str, alert_type: str) -> None:
-    # Try legacy dropdown first.
+def price_alert_url_from_product_url(product_url: str, fallback: str) -> str:
+    """
+    Dealernet price alerts use the same query string as the price guide product page:
+    priceguide.php?categoryid=...&subcategoryid=...&boxtypeid=...&year=...
+    becomes priceAlert.php?...
+    """
+    url = (product_url or "").strip()
+    if not url:
+        return fallback
+    if "priceAlert.php" in url:
+        return url
+
+    parts = urlsplit(url)
+    query = parts.query
+    if not query and "?" in url:
+        query = url.split("?", 1)[1]
+
+    if query:
+        return urlunsplit((parts.scheme or "https", parts.netloc or "www.dealernetx.com", "/priceAlert.php", query, ""))
+
+    return fallback
+
+
+def _is_product_scoped_alert_url(url: str) -> bool:
+    """Category-only price guide URLs cannot create product alerts."""
+    u = (url or "").lower()
+    return "pricealert.php" in u and ("subcategoryid=" in u or "boxtypeid=" in u)
+
+
+def _set_alert_type(
+    page,
+    selector: str,
+    alert_type: str,
+    *,
+    for_sale_selector: Optional[str] = None,
+    wanted_selector: Optional[str] = None,
+) -> None:
+    dedicated: Optional[str] = None
+    if alert_type == "For Sale" and for_sale_selector:
+        dedicated = for_sale_selector
+    elif alert_type == "Wanted" and wanted_selector:
+        dedicated = wanted_selector
+
+    if dedicated:
+        for action in ("check", "click"):
+            try:
+                getattr(page, action)(dedicated)
+                return
+            except Exception:
+                continue
+        raise PriceAlertError(f"Could not select alert type '{alert_type}' via {dedicated}")
+
+    # Legacy dropdown / radio fallback.
     try:
         page.select_option(selector, label=alert_type)
         return
@@ -28,7 +80,6 @@ def _set_alert_type(page, selector: str, alert_type: str) -> None:
     except Exception:
         pass
 
-    # Dealernet revamp uses radios: <input type="radio" name="type" value="Wanted|For Sale">
     radio_selector = f"input[type='radio'][name='type'][value='{alert_type}']"
     try:
         page.check(radio_selector)
@@ -52,12 +103,30 @@ def _fill_alert_price(page, preferred_selector: str, value: float) -> None:
         "input#price",
     ]
     for sel in candidates:
+        if not sel:
+            continue
         try:
             page.fill(sel, val)
             return
         except Exception:
             continue
     raise PriceAlertError("Could not fill alert price field")
+
+
+def _read_market_on_page(page) -> tuple[Optional[float], Optional[float]]:
+    """Best-effort read of high buy / low sell shown on the alert form."""
+    body = page.locator("body").inner_text(timeout=5000)
+    high_buy = None
+    low_sell = None
+    import re
+
+    hb = re.search(r"high\s*buy\s*[:$]?\s*\$?\s*([\d,]+\.?\d*)", body, re.I)
+    ls = re.search(r"low\s*sell\s*[:$]?\s*\$?\s*([\d,]+\.?\d*)", body, re.I)
+    if hb:
+        high_buy = parse_money(hb.group(1))
+    if ls:
+        low_sell = parse_money(ls.group(1))
+    return high_buy, low_sell
 
 
 def _bucket_rank(bucket: str) -> int:
@@ -78,7 +147,6 @@ def add_price_alerts_from_csv(
     matches_csv: Path,
     match_types: set[str],
     alert_type: str,
-    # You can decide alert price from either supplier or shopify; by default use supplier.
     price_source: str = "supplier",
     min_priority_bucket: Optional[str] = None,
     allowed_actions: Optional[set[str]] = None,
@@ -88,15 +156,22 @@ def add_price_alerts_from_csv(
     dry_run: bool = True,
 ) -> dict[str, int]:
     """
-    Reads `matches.csv` and creates alerts for rows with desired match_types.
+    Reads matches CSV and creates Dealernet price alerts for filtered rows.
 
-    This is intentionally conservative: it does not try to outsmart site constraints.
-    If the site rejects an alert (range check), we count it as rejected.
+    Each alert is created on that product's priceAlert.php URL (same query params as price guide).
     """
     if not config.price_alert_url:
         raise PriceAlertError("price_alerts.url is not set in supplier config")
-    if not (config.price_alert_type_selector and config.price_alert_price_selector and config.price_alert_add_selector):
-        raise PriceAlertError("price alert selectors not fully set (type_selector/price_selector/add_selector)")
+    if not (config.price_alert_price_selector and config.price_alert_add_selector):
+        raise PriceAlertError("price alert selectors not fully set (price_selector/add_selector)")
+    if not (
+        config.price_alert_for_sale_type_selector
+        or config.price_alert_wanted_type_selector
+        or config.price_alert_type_selector
+    ):
+        raise PriceAlertError(
+            "price alert type selectors not set (for_sale_type_selector / wanted_type_selector / type_selector)"
+        )
 
     username = os.getenv(config.username_env, "")
     password = os.getenv(config.password_env, "")
@@ -121,6 +196,7 @@ def add_price_alerts_from_csv(
     targets = []
     seen_keys: set[tuple[str, str]] = set()
     filtered_out = 0
+    skipped_no_url = 0
     for r in rows:
         if (r.get("match_type") or "").strip() not in match_types:
             filtered_out += 1
@@ -157,18 +233,32 @@ def add_price_alerts_from_csv(
             filtered_out += 1
             continue
 
-        dedupe_key = (supplier_upc or "", f"{price:.2f}")
+        product_url = (r.get("supplier_product_url") or r.get("product_url") or "").strip()
+        alert_url = price_alert_url_from_product_url(product_url, config.price_alert_url or "")
+        if not _is_product_scoped_alert_url(alert_url):
+            skipped_no_url += 1
+            continue
+
+        dedupe_key = (supplier_upc or alert_url, f"{price:.2f}")
         if dedupe_key in seen_keys:
             continue
         seen_keys.add(dedupe_key)
 
-        targets.append({"upc": supplier_upc, "title": supplier_title, "price": round(price, 2)})
+        targets.append(
+            {
+                "upc": supplier_upc,
+                "title": supplier_title,
+                "price": round(price, 2),
+                "alert_url": alert_url,
+            }
+        )
         if max_alerts > 0 and len(targets) >= max_alerts:
             break
 
     stats = {
         "rows_total": len(rows),
         "rows_filtered_out": filtered_out,
+        "skipped_no_product_url": skipped_no_url,
         "planned": len(targets),
         "attempted": 0,
         "added": 0,
@@ -181,6 +271,7 @@ def add_price_alerts_from_csv(
     if dry_run:
         return stats
 
+    type_selector = config.price_alert_type_selector or ""
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, slow_mo=config.slow_mo_ms)
         context = browser.new_context()
@@ -188,7 +279,6 @@ def add_price_alerts_from_csv(
         page.set_default_navigation_timeout(config.navigation_timeout_ms)
         page.set_default_timeout(config.selector_timeout_ms)
 
-        # Login
         page.goto(config.login_url)
         page.wait_for_timeout(config.step_delay_ms)
         page.fill(config.username_selector, username)
@@ -203,24 +293,35 @@ def add_price_alerts_from_csv(
 
         for t in targets:
             stats["attempted"] += 1
-            page.goto(config.price_alert_url)
+            page.goto(t["alert_url"])
             page.wait_for_timeout(config.step_delay_ms)
 
-            _set_alert_type(page, config.price_alert_type_selector, alert_type)
+            _set_alert_type(
+                page,
+                type_selector,
+                alert_type,
+                for_sale_selector=config.price_alert_for_sale_type_selector,
+                wanted_selector=config.price_alert_wanted_type_selector,
+            )
 
             page.wait_for_timeout(config.step_delay_ms)
-            _fill_alert_price(page, config.price_alert_price_selector, float(t["price"]))
+            _fill_alert_price(page, config.price_alert_price_selector or "", float(t["price"]))
             page.wait_for_timeout(config.step_delay_ms)
 
-            page.click(config.price_alert_add_selector)
+            high_buy, low_sell = _read_market_on_page(page)
+            if high_buy is not None or low_sell is not None:
+                print(
+                    f"  alert {t.get('upc') or t.get('title')[:40]}: "
+                    f"alert=${t['price']:.2f} market high_buy={high_buy} low_sell={low_sell}"
+                )
+
+            page.click(config.price_alert_add_selector or "")
             page.wait_for_timeout(config.step_delay_ms)
 
-            # If feedback selector is configured, use it to detect acceptance vs rejection.
             if config.price_alert_feedback_selector:
                 try:
                     msg = page.locator(config.price_alert_feedback_selector).first.inner_text().strip()
                     if msg:
-                        # Heuristic: presence of "error" / "range" implies rejection
                         if any(x in msg.lower() for x in ["error", "range", "invalid", "must be"]):
                             stats["rejected"] += 1
                         else:
@@ -229,10 +330,8 @@ def add_price_alerts_from_csv(
                 except PlaywrightTimeoutError:
                     pass
 
-            # No feedback selector: assume added (best-effort).
             stats["added"] += 1
 
         browser.close()
 
     return stats
-

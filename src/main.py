@@ -280,6 +280,7 @@ def add_alerts(
     )
     typer.echo(f"Rows total:       {stats.get('rows_total', 0)}")
     typer.echo(f"Rows filtered:    {stats.get('rows_filtered_out', 0)}")
+    typer.echo(f"Skipped no URL:   {stats.get('skipped_no_product_url', 0)}")
     typer.echo(f"Alerts planned:   {stats.get('planned', 0)}")
     typer.echo(f"Alerts attempted: {stats.get('attempted', 0)}")
     typer.echo(f"Alerts added:     {stats.get('added', 0)}")

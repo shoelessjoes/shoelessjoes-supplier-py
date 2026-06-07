@@ -226,6 +226,7 @@ def match_supplier_to_shopify(
                         priority_score=priority_score,
                         priority_bucket=priority_bucket,
                         rationale=rationale,
+                        supplier_product_url=s.product_url,
                     )
                 )
                 continue
@@ -295,6 +296,7 @@ def match_supplier_to_shopify(
                             priority_bucket=priority_bucket,
                             rationale=rationale,
                             notes="UPC missing or not found; matched by title",
+                            supplier_product_url=s.product_url,
                         )
                     )
                     continue
@@ -326,6 +328,7 @@ def match_supplier_to_shopify(
                 sales_weighted_margin_score=None,
                 priority_score=0,
                 priority_bucket="low",
+                supplier_product_url=s.product_url,
             )
         )
 
@@ -348,6 +351,7 @@ def load_supplier_csv(path: Path) -> list[SupplierRow]:
                 supplier_low_sell=parse_money(r.get("supplier_low_sell")),
                 raw=r,
                 scraped_at=datetime.fromisoformat((r.get("scraped_at") or "1970-01-01T00:00:00+00:00")),
+                product_url=(r.get("product_url") or "").strip() or None,
             )
         )
     return out
@@ -421,6 +425,7 @@ def write_matches_csv(path: Path, matches: list[MatchResult]) -> None:
                 "priority_bucket": m.priority_bucket or "",
                 "rationale": m.rationale or "",
                 "notes": m.notes or "",
+                "supplier_product_url": m.supplier_product_url or "",
             }
         )
     write_csv(
@@ -434,6 +439,7 @@ def write_matches_csv(path: Path, matches: list[MatchResult]) -> None:
             "supplier_price",
             "supplier_high_buy",
             "supplier_low_sell",
+            "supplier_product_url",
             "shopify_barcode",
             "shopify_title",
             "shopify_product_id",

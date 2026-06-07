@@ -14,6 +14,7 @@ class SupplierRow:
     scraped_at: datetime
     supplier_high_buy: Optional[float] = None
     supplier_low_sell: Optional[float] = None
+    product_url: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -68,4 +69,5 @@ class MatchResult:
     priority_bucket: Optional[str] = None
     rationale: Optional[str] = None
     notes: Optional[str] = None
+    supplier_product_url: Optional[str] = None
 

@@ -48,6 +48,8 @@ class SupplierConfig:
 
     price_alert_url: Optional[str]
     price_alert_type_selector: Optional[str]
+    price_alert_for_sale_type_selector: Optional[str]
+    price_alert_wanted_type_selector: Optional[str]
     price_alert_price_selector: Optional[str]
     price_alert_add_selector: Optional[str]
     price_alert_feedback_selector: Optional[str]
@@ -115,6 +117,8 @@ def load_supplier_config(path: Path) -> SupplierConfig:
         table_selector_after_product_link=table.get("table_selector_after_product_link"),
         price_alert_url=alerts.get("url"),
         price_alert_type_selector=alerts.get("type_selector"),
+        price_alert_for_sale_type_selector=alerts.get("for_sale_type_selector"),
+        price_alert_wanted_type_selector=alerts.get("wanted_type_selector"),
         price_alert_price_selector=alerts.get("price_selector"),
         price_alert_add_selector=alerts.get("add_selector"),
         price_alert_feedback_selector=alerts.get("feedback_selector"),

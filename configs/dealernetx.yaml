@@ -86,9 +86,11 @@ upc_lookup:
 
 price_alerts:
   url: "https://www.dealernetx.com/priceAlert.php"
-  type_selector: "select[name='type'], select#type"
-  price_selector: "input[name='price'], input#price"
-  add_selector: "input[type='submit'], button[type='submit']"
+  for_sale_type_selector: "div.price-alert-page label:nth-child(2) input[type=radio]"
+  wanted_type_selector: "div.price-alert-page label:nth-child(1) input[type=radio]"
+  type_selector: "select[name='type'], select#type, input[type='radio'][name='type']"
+  price_selector: "#dprice"
+  add_selector: "div.price-alert-page input.btn-primary"
   feedback_selector: null
 
 mapping:

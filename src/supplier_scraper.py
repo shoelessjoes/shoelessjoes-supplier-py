@@ -267,6 +267,7 @@ def scrape_supplier_table(config: SupplierConfig, out_csv: Path) -> list[Supplie
                             supplier_low_sell=low_sell,
                             raw=base_raw,
                             scraped_at=scraped_at,
+                            product_url=page.url,
                         )
                     )
                 else:
@@ -280,6 +281,7 @@ def scrape_supplier_table(config: SupplierConfig, out_csv: Path) -> list[Supplie
                                 supplier_low_sell=low_sell,
                                 raw=base_raw,
                                 scraped_at=scraped_at,
+                                product_url=page.url,
                             )
                         )
             return out
@@ -439,6 +441,7 @@ def scrape_supplier_table(config: SupplierConfig, out_csv: Path) -> list[Supplie
             "supplier_price": "" if r.supplier_price is None else r.supplier_price,
             "supplier_high_buy": "" if r.supplier_high_buy is None else r.supplier_high_buy,
             "supplier_low_sell": "" if r.supplier_low_sell is None else r.supplier_low_sell,
+            "product_url": r.product_url or "",
             "scraped_at": r.scraped_at.isoformat(),
         }
         for r in supplier_rows
@@ -452,6 +455,7 @@ def scrape_supplier_table(config: SupplierConfig, out_csv: Path) -> list[Supplie
             "supplier_price",
             "supplier_high_buy",
             "supplier_low_sell",
+            "product_url",
             "scraped_at",
         ],
     )
