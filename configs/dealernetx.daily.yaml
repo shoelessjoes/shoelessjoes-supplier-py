@@ -28,36 +28,37 @@ upc_lookup:
   enabled: true
   # Daily run profile: active/in-stock UPCs.
   upc_csv_path: "data/upcs_in_stock.csv"
-  # Sweep all configured categories (IDs from Dealernet category dropdown).
+  # Category sweep for price-guide pricing; search.php enriches listing.php URLs for price alerts.
   category_sweep_ids:
-    - "21"    # Baseball
-    - "23"    # Basketball
-    - "1501"  # Basketball WNBA
-    - "1381"  # Combat Sports
-    - "141"   # Entertainment
-    - "25"    # Football
-    - "241"   # Golf
-    - "27"    # Hockey
-    - "1461"  # Lacrosse
-    - "1604"  # Other Sports
-    - "221"   # Racing
-    - "1521"  # Soccer (single year)
-    - "29"    # Soccer (split year)
-    - "621"   # Tennis
-    - "521"   # Multi Sports
-    - "1605"  # EFT Swap
-    - "1541"  # Magic The Gathering
-    - "1606"  # One Piece
-    - "1561"  # POKEMON
-    - "1602"  # YuGiOh!
-    - "41"    # other / more games
-    - "1610"  # PSA GRADED CARDS
-    - "1608"  # Pop Mart
-    - "1609"  # Precious Metals
+    - "21"
+    - "23"
+    - "1501"
+    - "1381"
+    - "141"
+    - "25"
+    - "241"
+    - "27"
+    - "1461"
+    - "1604"
+    - "221"
+    - "1521"
+    - "29"
+    - "621"
+    - "521"
+    - "1605"
+    - "1541"
+    - "1606"
+    - "1561"
+    - "1602"
+    - "41"
+    - "1610"
+    - "1608"
+    - "1609"
+  search_url: "https://www.dealernetx.com/search.php"
   search_input_selector: "#keywordsearch"
   search_submit_selector: "i.fa-search"
   search_wait_url_contains: "search.php"
-  search_results_first_link_selector: "table tbody tr td:nth-child(2) a"
+  search_results_first_link_selector: "main table tbody tr a[href*='listing.php']"
   navigate_back_to_table_selector: null
 
 price_alerts:

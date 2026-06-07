@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
@@ -18,9 +18,9 @@ class PriceAlertError(RuntimeError):
 
 def price_alert_url_from_product_url(product_url: str, fallback: str) -> str:
     """
-    Dealernet price alerts use the same query string as the price guide product page:
-    priceguide.php?categoryid=...&subcategoryid=...&boxtypeid=...&year=...
-    becomes priceAlert.php?...
+    Dealernet price alerts share query params with priceguide.php or listing.php:
+    listing.php?categoryid=...&subcategoryid=...&boxtypeid=...&year=...
+    → priceAlert.php?... (listingtypeid dropped when present).
     """
     url = (product_url or "").strip()
     if not url:
@@ -29,20 +29,31 @@ def price_alert_url_from_product_url(product_url: str, fallback: str) -> str:
         return url
 
     parts = urlsplit(url)
-    query = parts.query
-    if not query and "?" in url:
-        query = url.split("?", 1)[1]
+    if not parts.query:
+        return fallback
 
-    if query:
-        return urlunsplit((parts.scheme or "https", parts.netloc or "www.dealernetx.com", "/priceAlert.php", query, ""))
-
-    return fallback
+    qs = parse_qs(parts.query)
+    qs.pop("listingtypeid", None)
+    flat = {k: v[0] for k, v in qs.items() if v}
+    if not flat:
+        return fallback
+    return urlunsplit(
+        (
+            parts.scheme or "https",
+            parts.netloc or "www.dealernetx.com",
+            "/priceAlert.php",
+            urlencode(flat),
+            "",
+        )
+    )
 
 
 def _is_product_scoped_alert_url(url: str) -> bool:
     """Category-only price guide URLs cannot create product alerts."""
     u = (url or "").lower()
-    return "pricealert.php" in u and ("subcategoryid=" in u or "boxtypeid=" in u)
+    if not ("subcategoryid=" in u or "boxtypeid=" in u):
+        return False
+    return any(x in u for x in ("pricealert.php", "listing.php", "priceguide.php"))
 
 
 def _set_alert_type(

@@ -80,7 +80,8 @@ upc_lookup:
   search_wait_url_contains: "search.php"
   # Table columns: UPC | Listing | Variation | ... — link is in Listing (2nd column).
   # If your rows have an extra leading cell (e.g. row number), use td:nth-child(3) a instead.
-  search_results_first_link_selector: "table tbody tr td:nth-child(2) a"
+  search_url: "https://www.dealernetx.com/search.php"
+  search_results_first_link_selector: "main table tbody tr a[href*='listing.php']"
   # If a product page has a button that returns to the table/history view, set it here
   navigate_back_to_table_selector: null
 

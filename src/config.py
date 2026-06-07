@@ -35,6 +35,7 @@ class SupplierConfig:
     upc_csv_path: Optional[str]
     # Optional category IDs to iterate (e.g. 21,23,25...) when scraping broad market tables.
     category_sweep_ids: Tuple[str, ...]
+    search_url: Optional[str]
     search_input_selector: Optional[str]
     search_submit_selector: Optional[str]
     search_results_first_link_selector: Optional[str]
@@ -109,6 +110,7 @@ def load_supplier_config(path: Path) -> SupplierConfig:
         upc_lookup_enabled=bool(upc_lookup.get("enabled", False)),
         upc_csv_path=upc_lookup.get("upc_csv_path"),
         category_sweep_ids=tuple(str(x) for x in (upc_lookup.get("category_sweep_ids", []) or [])),
+        search_url=upc_lookup.get("search_url"),
         search_input_selector=upc_lookup.get("search_input_selector"),
         search_submit_selector=upc_lookup.get("search_submit_selector"),
         search_results_first_link_selector=upc_lookup.get("search_results_first_link_selector"),

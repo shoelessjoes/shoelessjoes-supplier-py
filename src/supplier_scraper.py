@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import urlencode, urljoin
 
 import pandas as pd
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -27,6 +29,37 @@ def _get_supplier_credentials(config: SupplierConfig) -> tuple[str, str]:
             f"Copy .env.example to .env and set values (do not put passwords in YAML)."
         )
     return username, password
+
+
+def _is_product_scoped_guide_url(url: str) -> bool:
+    u = (url or "").lower()
+    if not any(x in u for x in ("priceguide.php", "pricealert.php", "listing.php")):
+        return False
+    return "subcategoryid=" in u or "boxtypeid=" in u
+
+
+def _extract_row_product_url(row_locator, page_url: str) -> Optional[str]:
+    """Pull product-scoped priceguide URL from a table row link when present."""
+    selectors = [
+        "a[href*='listing.php']",
+        "a[href*='priceguide.php']",
+        "a[href*='priceAlert.php']",
+        "a[href*='categoryid=']",
+        "td a[href]",
+    ]
+    for sel in selectors:
+        try:
+            loc = row_locator.locator(sel)
+            for i in range(min(loc.count(), 8)):
+                href = (loc.nth(i).get_attribute("href") or "").strip()
+                if not href or href.startswith("#"):
+                    continue
+                full = urljoin(page_url, href)
+                if _is_product_scoped_guide_url(full):
+                    return full
+        except Exception:
+            continue
+    return None
 
 
 def _login(page, config: SupplierConfig, username: str, password: str) -> None:
@@ -248,10 +281,15 @@ def scrape_supplier_table(config: SupplierConfig, out_csv: Path) -> list[Supplie
                 price = parse_money(price_raw)
                 high_buy = parse_money(high_buy_raw)
                 low_sell = parse_money(low_sell_raw)
+                row_product_url = _extract_row_product_url(r, page.url)
+                product_url = row_product_url or (
+                    page.url if _is_product_scoped_guide_url(page.url) else None
+                )
                 base_raw = {
                     "cells": cells,
                     "headers": header_cells,
                     "url": page.url,
+                    "product_url": product_url or "",
                     "upc_cell": upc_raw,
                 }
                 codes = upcs_from_cell(upc_raw)
@@ -267,7 +305,7 @@ def scrape_supplier_table(config: SupplierConfig, out_csv: Path) -> list[Supplie
                             supplier_low_sell=low_sell,
                             raw=base_raw,
                             scraped_at=scraped_at,
-                            product_url=page.url,
+                            product_url=product_url,
                         )
                     )
                 else:
@@ -281,7 +319,7 @@ def scrape_supplier_table(config: SupplierConfig, out_csv: Path) -> list[Supplie
                                 supplier_low_sell=low_sell,
                                 raw=base_raw,
                                 scraped_at=scraped_at,
-                                product_url=page.url,
+                                product_url=product_url,
                             )
                         )
             return out
@@ -359,70 +397,90 @@ def scrape_supplier_table(config: SupplierConfig, out_csv: Path) -> list[Supplie
                     deduped.append(r)
                 return deduped
 
-            search_available = False
-            if config.search_input_selector:
-                page.goto(config.table_url)
+            def _search_url_for_upc(upc: str) -> str:
+                base = (config.search_url or "https://www.dealernetx.com/search.php").strip()
+                if "keywordsearch=" in base.lower():
+                    return base.replace("keywordsearch=", f"keywordsearch={upc}", 1)
+                join = "&" if "?" in base else "?"
+                return f"{base}{join}{urlencode({'keywordsearch': upc})}"
+
+            def _open_upc_search_results(upc: str) -> bool:
+                """Land on search results for a UPC (header search is not on priceguide.php)."""
+                page.goto(_search_url_for_upc(upc))
                 _sleep_ms(page, config.step_delay_ms)
-                _apply_filter_actions(page, config.filter_actions, config.step_delay_ms)
-                try:
-                    page.locator(config.search_input_selector).first.wait_for(
-                        state="visible", timeout=5000
-                    )
-                    search_available = True
-                except PlaywrightTimeoutError:
-                    search_available = False
+                if config.search_wait_url_contains:
+                    try:
+                        needle = config.search_wait_url_contains
+                        page.wait_for_url(
+                            lambda u, n=needle: n in u,
+                            timeout=config.selector_timeout_ms,
+                        )
+                    except PlaywrightTimeoutError:
+                        pass
+                _sleep_ms(page, config.step_delay_ms)
+                return True
+
+            def _listing_url_from_search(upc: str) -> Optional[str]:
+                _open_upc_search_results(upc)
+                selectors = [
+                    config.search_results_first_link_selector,
+                    "main table tbody tr a[href*='listing.php']",
+                    "main table tbody tr a",
+                ]
+                for sel in selectors:
+                    if not sel:
+                        continue
+                    try:
+                        link = page.locator(sel).first
+                        if link.count() == 0:
+                            continue
+                        href = (link.get_attribute("href") or "").strip()
+                        if not href:
+                            continue
+                        full = urljoin(page.url, href)
+                        if _is_product_scoped_guide_url(full):
+                            return full
+                    except Exception:
+                        continue
+                return None
+
+            def enrich_product_urls_from_search(rows: list[SupplierRow]) -> list[SupplierRow]:
+                need = sorted(
+                    {
+                        r.upc
+                        for r in rows
+                        if r.upc and (not r.product_url or not _is_product_scoped_guide_url(r.product_url))
+                    }
+                )
+                if not need:
+                    return rows
+                url_by_upc: dict[str, str] = {}
+                total = len(need)
+                for idx, upc in enumerate(need, start=1):
+                    if idx == 1 or idx % 25 == 0 or idx == total:
+                        print(f"Resolve listing URL {idx}/{total} ({upc})", flush=True)
+                    found = _listing_url_from_search(upc)
+                    if found:
+                        url_by_upc[upc] = found
+                if not url_by_upc:
+                    return rows
+                return [
+                    replace(r, product_url=url_by_upc[r.upc])
+                    if r.upc and r.upc in url_by_upc
+                    else r
+                    for r in rows
+                ]
 
             if config.category_sweep_ids:
                 supplier_rows = run_category_sweep_mode()
-            elif not config.search_input_selector or not search_available:
-                supplier_rows = run_table_filter_mode()
+                supplier_rows = enrich_product_urls_from_search(supplier_rows)
+            elif upcs:
+                raise SupplierScrapeError(
+                    "UPC CSV is set but category_sweep_ids is empty. "
+                    "Daily pricing needs category sweep; listing URLs are resolved via search.php after sweep."
+                )
             else:
-                for upc in upcs:
-                    # Start from a known page each time.
-                    page.goto(config.table_url)
-                    _sleep_ms(page, config.step_delay_ms)
-                    # Price guide filters (category → subcategory → year → box type → dates) belong here,
-                    # before the global product search — not after opening a product.
-                    _apply_filter_actions(page, config.filter_actions, config.step_delay_ms)
-
-                    page.fill(config.search_input_selector, upc)
-                    _sleep_ms(page, config.step_delay_ms)
-
-                    if config.search_submit_selector:
-                        page.click(config.search_submit_selector)
-                    else:
-                        page.keyboard.press("Enter")
-
-                    if config.search_wait_url_contains:
-                        try:
-                            needle = config.search_wait_url_contains
-                            page.wait_for_url(
-                                lambda u, n=needle: n in u,
-                                timeout=config.selector_timeout_ms,
-                            )
-                        except PlaywrightTimeoutError:
-                            pass
-
-                    _sleep_ms(page, config.step_delay_ms)
-
-                    if config.search_results_first_link_selector:
-                        try:
-                            link = page.locator(config.search_results_first_link_selector).first
-                            link.wait_for(state="visible", timeout=config.selector_timeout_ms)
-                            link.click()
-                            _sleep_ms(page, config.step_delay_ms)
-                        except PlaywrightTimeoutError:
-                            continue
-
-                    if config.navigate_back_to_table_selector:
-                        try:
-                            page.click(config.navigate_back_to_table_selector)
-                            _sleep_ms(page, config.step_delay_ms)
-                        except PlaywrightTimeoutError:
-                            pass
-
-                    detail_tbl = config.table_selector_after_product_link or config.table_selector
-                    supplier_rows.extend(parse_current_table(table_sel=detail_tbl))
+                supplier_rows = run_table_filter_mode()
 
         # Mode B: scrape current table based on filters on table page
         else:

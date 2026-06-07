@@ -56,7 +56,8 @@ upc_lookup:
   search_input_selector: "#keywordsearch"
   search_submit_selector: "i.fa-search"
   search_wait_url_contains: "search.php"
-  search_results_first_link_selector: "table tbody tr td:nth-child(2) a"
+  search_url: "https://www.dealernetx.com/search.php"
+  search_results_first_link_selector: "main table tbody tr a[href*='listing.php']"
   navigate_back_to_table_selector: null
 
 price_alerts:
