@@ -1,3 +1,9 @@
+> **ARCHIVED 2026-06-16.** Port from legacy `shoeless-joes` is essentially complete; kept for history.
+> Live status + canonical commands live in `../PROJECT_STATE.md`. The two open boxes below are the only
+> remaining items and are tracked there.
+
+---
+
 # Migration map — shoelessjoes-supplier-py
 
 Transitional Python pipeline for DealernetX pricing intelligence. Long-term logic migrates into `shoelessjoes-ops`; keep this repo runnable until that cutover.
@@ -32,7 +38,7 @@ Key folders/files:
 
 - Storefront handoff: `../shoelessjoes-storefront/docs/HANDOFF.md`
 - Node ops target: `../shoelessjoes-ops/docs/MIGRATION.md`
-- Stack overview: `DEALERNET_STACK.md`
+- Stack overview: `../shared/DEALERNET_STACK.md`
 - Zip archive `C:\Users\burke\Git\dealernet-shopify-ops.zip` matches live `dealernet-shopify-ops` @ `5f95a8d` (no extra files vs clone)
 
 ## Status
