@@ -132,6 +132,8 @@ PRODUCT_EXTRACT_JS = """() => {
   })();
 
   const h1 = document.querySelector('h1')?.textContent?.trim() || '';
+  return {
+    title: h1 || productName,
     url: location.href,
     upcs: [...upcs],
     releaseDateRaw,

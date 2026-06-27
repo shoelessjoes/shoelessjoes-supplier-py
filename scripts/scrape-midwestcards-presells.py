@@ -30,10 +30,12 @@ def with_page_param(url: str, page_num: int) -> str:
 
 
 def wait_past_cloudflare(page, timeout_ms: int) -> bool:
-    page.wait_for_timeout(2500)
-    if "just a moment" not in (page.title() or "").lower():
-        return True
-    page.wait_for_timeout(min(timeout_ms, 12_000))
+    for _ in range(4):
+        page.wait_for_timeout(3000)
+        title = (page.title() or "").lower()
+        if "just a moment" not in title:
+            return True
+        page.wait_for_timeout(min(timeout_ms // 4, 10_000))
     return "just a moment" not in (page.title() or "").lower()
 
 
@@ -42,6 +44,29 @@ def category_path_prefix(category_url: str) -> str:
     if not path:
         return "/"
     return f"/{path.split('/')[0]}/"
+
+
+def listing_links_from_page(page, prefix: str) -> list[str]:
+    links = page.evaluate(LISTING_LINKS_JS)
+    filtered = [u for u in links if urlparse(u).path.startswith(prefix)]
+    if filtered:
+        return filtered
+    return page.evaluate(
+        """(prefix) => {
+      const out = new Set();
+      for (const a of document.querySelectorAll('a[href]')) {
+        try {
+          const u = new URL(a.href);
+          if (!u.hostname.includes('midwestcards.com')) continue;
+          if (!u.pathname.startsWith(prefix)) continue;
+          if (!/\\/20\\d{2}-[a-z0-9-]+\\/$/i.test(u.pathname)) continue;
+          out.add(u.origin + u.pathname);
+        } catch {}
+      }
+      return [...out];
+    }""",
+        prefix,
+    )
 
 
 def collect_listing_urls(
@@ -58,8 +83,8 @@ def collect_listing_urls(
         page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
         if not wait_past_cloudflare(page, timeout_ms):
             break
-        links = page.evaluate(LISTING_LINKS_JS)
-        new_links = [u for u in links if u not in seen and urlparse(u).path.startswith(prefix)]
+        links = listing_links_from_page(page, prefix)
+        new_links = [u for u in links if u not in seen]
         if not new_links:
             break
         for u in new_links:
@@ -70,19 +95,31 @@ def collect_listing_urls(
 
 
 def scrape_product_page(page, url: str, timeout_ms: int) -> dict:
-    page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
-    if not wait_past_cloudflare(page, timeout_ms):
-        return {"source_url": url, "error": "cloudflare", "upcs": []}
-    try:
-        btn = page.get_by_role("button", name=re.compile(r"item specifications", re.I))
-        if btn.count() > 0:
-            btn.first.click(timeout=3000)
-            page.wait_for_timeout(600)
-    except Exception:
-        pass
-    raw = page.evaluate(PRODUCT_EXTRACT_JS)
-    row = product_row_from_extract(raw)
-    row["source_list"] = "presell_category"
+    last: dict = {"source_url": url, "error": "cloudflare", "upcs": []}
+    for attempt in range(2):
+        page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+        page.wait_for_timeout(3000 if attempt == 0 else 5000)
+        if not wait_past_cloudflare(page, timeout_ms):
+            continue
+        try:
+            btn = page.get_by_role("button", name=re.compile(r"item specifications", re.I))
+            if btn.count() > 0:
+                btn.first.click(timeout=3000)
+                page.wait_for_timeout(600)
+        except Exception:
+            pass
+        raw = page.evaluate(PRODUCT_EXTRACT_JS)
+        row = product_row_from_extract(raw)
+        row["source_list"] = "presell_category"
+        return row
+    return last
+
+
+def scrape_product_isolated(p, url: str, headed: bool, timeout_ms: int) -> dict:
+    browser = p.chromium.launch(headless=not headed)
+    page = browser.new_page()
+    row = scrape_product_page(page, url, timeout_ms)
+    browser.close()
     return row
 
 
@@ -125,15 +162,9 @@ def main() -> None:
         "errors": 0,
     }
 
-    profile_dir = Path(__file__).resolve().parents[1] / "out" / "mwc-browser-profile"
-    profile_dir.mkdir(parents=True, exist_ok=True)
-
     with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(
-            str(profile_dir),
-            headless=not args.headed,
-        )
-        page = context.pages[0] if context.pages else context.new_page()
+        browser = p.chromium.launch(headless=not args.headed)
+        page = browser.new_page()
 
         for cat in categories:
             print(f"Listing: {cat}", file=sys.stderr)
@@ -151,17 +182,18 @@ def main() -> None:
             product_urls.append(u)
         stats["listing_urls"] = len(product_urls)
 
+        browser.close()
+
         if args.max_products > 0:
             product_urls = product_urls[: args.max_products]
 
         for i, url in enumerate(product_urls, 1):
             print(f"[{i}/{len(product_urls)}] {url}", file=sys.stderr)
-            row = scrape_product_page(page, url, args.timeout_ms)
+            row = scrape_product_isolated(p, url, args.headed, args.timeout_ms)
             stats["scraped"] += 1
             if row.get("error"):
                 rows.append(row)
                 stats["errors"] += 1
-                page.wait_for_timeout(2500)
                 continue
 
             upc = row.get("upc") or ""
@@ -185,9 +217,6 @@ def main() -> None:
                 stats["eligible"] += 1
 
             rows.append(row)
-            page.wait_for_timeout(2500)
-
-        context.close()
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
