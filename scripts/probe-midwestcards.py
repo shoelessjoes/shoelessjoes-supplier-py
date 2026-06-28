@@ -11,8 +11,12 @@ from typing import Any, Optional
 
 from playwright.sync_api import sync_playwright
 
-# Reuse supplier-py normalize if available
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src.midwest_browser import (  # noqa: E402
+    DEFAULT_PROFILE_DIR,
+    launch_midwest_context,
+    wait_past_cloudflare,
+)
 from src.utils import normalize_upc  # noqa: E402
 
 DEFAULT_URLS = [
@@ -117,13 +121,19 @@ def load_catalog_upcs(catalog_path: Path) -> dict[str, dict[str, str]]:
     return by_upc
 
 
-def scrape_product(page, url: str, timeout_ms: int, retries: int = 2) -> dict[str, Any]:
+def scrape_product(
+    page,
+    url: str,
+    timeout_ms: int,
+    *,
+    manual_cf: bool,
+    retries: int = 2,
+) -> dict[str, Any]:
     last: dict[str, Any] = {"url": url, "upcs": []}
     for attempt in range(retries):
         page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
         page.wait_for_timeout(3000 if attempt == 0 else 7000)
-        title = (page.title() or "").lower()
-        if "just a moment" in title:
+        if not wait_past_cloudflare(page, timeout_ms, manual=manual_cf, label=url):
             continue
         try:
             btn = page.get_by_role("button", name=re.compile(r"item specifications", re.I))
@@ -141,18 +151,35 @@ def scrape_product(page, url: str, timeout_ms: int, retries: int = 2) -> dict[st
     return last
 
 
-def probe_urls(urls: list[str], headed: bool, timeout_ms: int) -> list[dict[str, Any]]:
+def probe_urls(
+    urls: list[str],
+    headed: bool,
+    timeout_ms: int,
+    *,
+    profile_dir: Path,
+    channel: str | None,
+    manual_cf: bool,
+) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=not headed)
-        page = browser.new_page()
-        for url in urls:
-            try:
-                results.append(scrape_product(page, url, timeout_ms))
-                page.wait_for_timeout(1500)
-            except Exception as e:
-                results.append({"url": url, "error": str(e), "upcs": []})
-        browser.close()
+        context = launch_midwest_context(
+            p,
+            headed=headed,
+            profile_dir=profile_dir,
+            channel=channel,
+        )
+        page = context.pages[0] if context.pages else context.new_page()
+        try:
+            for url in urls:
+                try:
+                    results.append(
+                        scrape_product(page, url, timeout_ms, manual_cf=manual_cf),
+                    )
+                    page.wait_for_timeout(1500)
+                except Exception as e:
+                    results.append({"url": url, "error": str(e), "upcs": []})
+        finally:
+            context.close()
     return results
 
 
@@ -177,6 +204,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Probe Midwest Cards and check UPCs vs sealed catalog")
     parser.add_argument("urls", nargs="*", help="Product URLs (default: Series 2 mega box + case)")
     parser.add_argument("--headed", action="store_true", help="Visible browser (required to pass Cloudflare)")
+    parser.add_argument("--manual-cf", action="store_true", help="Wait for manual Cloudflare verification")
+    parser.add_argument("--browser-profile", default=str(DEFAULT_PROFILE_DIR))
+    parser.add_argument("--channel", default="", help='e.g. "chrome" or "msedge"')
     parser.add_argument(
         "--catalog",
         default=str(Path(__file__).resolve().parents[2] / "shoelessjoes-ops" / "data" / "sealed-catalog.csv"),
@@ -193,7 +223,14 @@ def main() -> None:
     print(f"Catalog: {catalog_path} ({len(catalog)} UPCs indexed)", file=sys.stderr)
     print(f"Probing {len(urls)} URL(s) headed={args.headed}...", file=sys.stderr)
 
-    results = probe_urls(urls, headed=args.headed, timeout_ms=args.timeout_ms)
+    results = probe_urls(
+        urls,
+        headed=args.headed,
+        timeout_ms=args.timeout_ms,
+        profile_dir=Path(args.browser_profile),
+        channel=args.channel.strip() or None,
+        manual_cf=args.manual_cf or args.headed,
+    )
     enrich_with_catalog(results, catalog)
 
     if args.json_out:

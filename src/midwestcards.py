@@ -185,6 +185,8 @@ def parse_release_date(raw: Optional[str]) -> Optional[str]:
     if not raw:
         return None
     s = str(raw).strip()
+    if s.lower().startswith("is "):
+        s = s[3:].strip()
     if not s or s.lower() in {"tbd", "n/a", "na", "-"}:
         return None
     iso = re.match(r"(\d{4})-(\d{2})-(\d{2})", s)
