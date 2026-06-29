@@ -1,4 +1,4 @@
-"""One-time Midwest Cards browser warmup — pass Cloudflare and save cookies to profile."""
+"""One-time Midwest Cards browser warmup — prefer launch-chrome-for-midwest.ps1 + --cdp-url instead."""
 from __future__ import annotations
 
 import argparse
@@ -11,53 +11,48 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.midwest_browser import (  # noqa: E402
     DEFAULT_PROFILE_DIR,
     MWC_HOME,
+    cdp_setup_instructions,
+    close_midwest_session,
     is_cloudflare_page,
-    launch_midwest_context,
+    open_midwest_session,
     wait_past_cloudflare,
 )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Open Midwest Cards in a persistent browser profile and wait for Cloudflare clearance",
+        description="Open Midwest Cards (Playwright launch). If CF loops, use launch-chrome-for-midwest.ps1 + --cdp-url.",
     )
     parser.add_argument("--headed", action="store_true", required=True)
     parser.add_argument("--browser-profile", default=str(DEFAULT_PROFILE_DIR))
-    parser.add_argument("--channel", default="chrome", help='Default "chrome"; try "msedge" if Chrome fails')
-    parser.add_argument("--timeout-ms", type=int, default=300_000, help="Wait up to 5 minutes for manual CF")
+    parser.add_argument("--channel", default="chrome")
+    parser.add_argument("--timeout-ms", type=int, default=300_000)
     args = parser.parse_args()
 
     profile_dir = Path(args.browser_profile)
     channel = args.channel.strip() or None
-    print(f"Profile: {profile_dir}", file=sys.stderr)
-    print(f"Opening {MWC_HOME} — complete Cloudflare if prompted, then leave the tab on Midwest Cards.", file=sys.stderr)
+    print(cdp_setup_instructions(profile_dir), file=sys.stderr)
+    print(f"\nAttempting Playwright launch anyway...", file=sys.stderr)
 
     with sync_playwright() as p:
-        context = launch_midwest_context(
+        session = open_midwest_session(
             p,
             headed=args.headed,
             profile_dir=profile_dir,
             channel=channel,
+            cdp_url=None,
         )
-        page = context.pages[0] if context.pages else context.new_page()
+        page = session.page
         try:
             page.goto(MWC_HOME, wait_until="domcontentloaded", timeout=args.timeout_ms)
-            ok = wait_past_cloudflare(
-                page,
-                args.timeout_ms,
-                manual=True,
-                label="homepage",
-            )
-            if ok:
-                print("Cloudflare cleared. Profile saved — scraper runs should reuse this session.", file=sys.stderr)
-            else:
-                print("Still on Cloudflare after timeout. Retry or check the browser window.", file=sys.stderr)
+            ok = wait_past_cloudflare(page, args.timeout_ms, manual=True, label="homepage")
+            if not ok or is_cloudflare_page(page):
+                print("\nCF still blocking. Use CDP mode (see instructions above).", file=sys.stderr)
                 sys.exit(1)
-            if is_cloudflare_page(page):
-                sys.exit(1)
+            print("Cloudflare cleared.", file=sys.stderr)
             input("Press Enter to close the browser...")
         finally:
-            context.close()
+            close_midwest_session(session)
 
 
 if __name__ == "__main__":
